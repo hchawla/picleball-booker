@@ -90,7 +90,7 @@ def _get_time_diff(h1: int, m1: int, h2: int, m2: int) -> int:
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 
-def book_pickleball_session(dry_run: bool = False, tomorrow: bool = False, target_time: str = None) -> dict:
+def book_pickleball_session(dry_run: bool = False, tomorrow: bool = False, target_time: str = None, target_date_str: str = None) -> dict:
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
     except ImportError:
@@ -102,8 +102,19 @@ def book_pickleball_session(dry_run: bool = False, tomorrow: bool = False, targe
     if not email or not password:
         return {"status": "error", "message": "COURTRESERVE_EMAIL / COURTRESERVE_PASS not set"}
 
-    target_date = datetime.now() + timedelta(days=1 if tomorrow else 0)
-    date_str = target_date.strftime("%a %b %-d")
+    # Determine target date
+    if target_date_str:
+        try:
+            target_date = datetime.strptime(target_date_str, "%Y-%m-%d")
+        except ValueError:
+            return {"status": "error", "message": f"Invalid date format: {target_date_str}. Use YYYY-MM-DD."}
+    else:
+        target_date = datetime.now() + timedelta(days=1 if tomorrow else 0)
+    
+    # CourtReserve display format for matching in scan
+    display_date_str = target_date.strftime("%a %b %-d")
+    # YYYY-MM-DD for URL/Picker
+    iso_date = target_date.strftime("%Y-%m-%d")
 
     target_h, target_m = None, None
     if target_time:
@@ -134,32 +145,35 @@ def book_pickleball_session(dry_run: bool = False, tomorrow: bool = False, targe
                 except Exception as e:
                     return {"status": "login_failed", "message": f"Login Error: {str(e)[:80]}"}
 
-            page.goto(EVENTS_URL, wait_until="domcontentloaded")
+            # Navigate directly to the date if possible, otherwise use the picker
+            # Most CourtReserve sites support a 'datepicker' query param
+            page.goto(f"{EVENTS_URL}?datepicker={iso_date}", wait_until="domcontentloaded")
             page.wait_for_timeout(2000)
 
             if page.locator("input[placeholder='Enter Your Email']").count() > 0:
                 return {"status": "error", "message": "Bounced back to login screen."}
 
-            if tomorrow:
-                try:
-                    tomorrow_filter = page.locator("label:has-text('Tomorrow'), span:has-text('Tomorrow'), input#DayFilterTomorrow + label").first
-                    if tomorrow_filter.count() > 0:
-                        tomorrow_filter.click()
+            # Verification: Check if the datepicker shows the requested date
+            # If the URL param didn't work, we try to manually set the date input
+            try:
+                date_input = page.locator("input#datepicker, input.datepicker").first
+                if date_input.count() > 0:
+                    current_val = date_input.input_value()
+                    # If it's not our target date, try to fill it and trigger change
+                    if iso_date not in current_val:
+                        date_input.fill(iso_date)
+                        date_input.press("Enter")
                         page.wait_for_load_state("networkidle")
-                        page.wait_for_timeout(2000) 
-                    else:
-                        return {"status": "error", "message": "Could not find 'Tomorrow' filter."}
-                except Exception as e:
-                    return {"status": "error", "message": f"Tomorrow navigation failed: {str(e)[:80]}"}
-            else:
-                try:
-                    today_filter = page.locator("label:has-text('Today'), span:has-text('Today')").first
-                    if today_filter.count() > 0:
-                        today_filter.click()
-                        page.wait_for_timeout(1500)
-                except Exception: pass
+                        page.wait_for_timeout(2000)
+            except Exception:
+                pass
 
-            return _scan_and_book(page, date_str, dry_run=dry_run, target_h=target_h, target_m=target_m)
+            return _scan_and_book(page, display_date_str, dry_run=dry_run, target_h=target_h, target_m=target_m)
+
+        except Exception as e:
+            return {"status": "error", "message": f"Unexpected error: {str(e)[:120]}"}
+        finally:
+            browser.close()
 
         except Exception as e:
             return {"status": "error", "message": f"Unexpected error: {str(e)[:120]}"}
@@ -346,7 +360,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--tomorrow", action="store_true")
+    parser.add_argument("--date", type=str, help="Target date in YYYY-MM-DD format")
     parser.add_argument("--target-time", type=str)
     args = parser.parse_args()
 
-    print(json.dumps(book_pickleball_session(args.dry_run, args.tomorrow, args.target_time), indent=2))
+    print(json.dumps(book_pickleball_session(args.dry_run, args.tomorrow, args.target_time, args.date), indent=2))

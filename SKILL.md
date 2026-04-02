@@ -13,9 +13,14 @@ A standalone tool for booking FREE AM Open Play sessions at Pickleball Haven Lak
 - **Target Time:** Prioritizes sessions closest to a specific time (e.g., 8:00 AM).
 
 ## Usage
-The agent calls this via bash:
+The agent calls this via bash. The agent is responsible for calculating the specific YYYY-MM-DD date if the user provides a relative day (e.g., "next Friday").
+
 ```bash
-python3 pickleball_booker.py [--dry-run] [--tomorrow] [--target-time "HH:MM AM/PM"]
+# Book for a specific date (up to 7 days out)
+python3 pickleball_booker.py --date "2026-04-03" --target-time "9:00 AM"
+
+# Check availability for tomorrow
+python3 pickleball_booker.py --tomorrow --dry-run
 ```
 
 ## Setup (User)

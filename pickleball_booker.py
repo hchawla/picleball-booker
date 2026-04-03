@@ -200,12 +200,19 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
 def _scan_and_book(page, target_date_str: str, card_date_str: str, dry_run: bool = False, target_h: int = None, target_m: int = None) -> dict:
     page.wait_for_timeout(2000)
 
+    # Verify the page is actually showing the target date before scanning.
+    # CourtReserve shows the date as a section header (e.g. "Mon Apr 6"), not inside
+    # each card — so this is a page-level check, not a per-card filter.
+    page_body = page.inner_text("body")
+    if card_date_str.lower() not in page_body.lower():
+        return {"status": "error", "message": f"Page does not appear to show sessions for {card_date_str} ({target_date_str}). Date navigation may have failed."}
+
     reg_buttons = page.locator(
         "button:has-text('Register'), a:has-text('Register'), "
         "button:has-text('Edit Registration'), a:has-text('Edit Registration'), "
         "button:has-text('Withdraw'), a:has-text('Withdraw')"
     ).all()
-    
+
     if not reg_buttons:
         return {"status": "none_available", "message": f"No Register buttons found for {target_date_str}."}
 
@@ -224,10 +231,6 @@ def _scan_and_book(page, target_date_str: str, card_date_str: str, dry_run: bool
 
         if not card_text: continue
         text = card_text
-
-        # Only process cards that belong to the target date
-        if card_date_str.lower() not in text.lower():
-            continue
 
         time_pat = r"(\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p))"
         range_pat = rf"{time_pat}\s*[-–—to]+\s*{time_pat}"

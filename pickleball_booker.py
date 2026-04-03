@@ -90,7 +90,7 @@ def _get_time_diff(h1: int, m1: int, h2: int, m2: int) -> int:
 
 # ── Main entry point ───────────────────────────────────────────────────────────
 
-def book_pickleball_session(dry_run: bool = False, target_time: str = None, target_date_str: str = None) -> dict:
+def book_pickleball_session(dry_run: bool = False, target_time: str = None, target_date_str: str = None, debug: bool = False) -> dict:
     try:
         from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
     except ImportError:
@@ -188,6 +188,21 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
                     date_nav_ok = True
             except Exception as e:
                 return {"status": "error", "message": f"Date navigation error: {str(e)[:100]}"}
+
+            if debug:
+                debug_path = SKILL_DIR / f"debug_{iso_date}.png"
+                text_path  = SKILL_DIR / f"debug_{iso_date}.txt"
+                page.screenshot(path=str(debug_path), full_page=True)
+                text_path.write_text(page.inner_text("body"))
+                sys.stderr.write(f"[debug] screenshot: {debug_path}\n[debug] page text:  {text_path}\n")
+                try:
+                    date_input = page.locator("input#datepicker, input.datepicker").first
+                    val = date_input.input_value() if date_input.count() > 0 else "(not found)"
+                    sys.stderr.write(f"[debug] datepicker value: {val}\n")
+                    sys.stderr.write(f"[debug] card_date_str: {card_date_str}\n")
+                    sys.stderr.write(f"[debug] picker_date: {picker_date}\n")
+                except Exception:
+                    pass
 
             return _scan_and_book(page, display_date_str, card_date_str, dry_run=dry_run, target_h=target_h, target_m=target_m)
 
@@ -385,6 +400,7 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--date", type=str, help="Target date in YYYY-MM-DD format")
     parser.add_argument("--target-time", type=str)
+    parser.add_argument("--debug", action="store_true", help="Save screenshot and page text for inspection")
     args = parser.parse_args()
 
-    print(json.dumps(book_pickleball_session(args.dry_run, args.target_time, args.date), indent=2))
+    print(json.dumps(book_pickleball_session(args.dry_run, args.target_time, args.date, args.debug), indent=2))

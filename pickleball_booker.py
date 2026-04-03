@@ -111,8 +111,8 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
     else:
         target_date = datetime.now()
     
-    # CourtReserve display format for matching in scan
-    display_date_str = target_date.strftime("%a %b %-d")
+    # Human-readable date for agent confirmation and response labels
+    display_date_str = target_date.strftime("%A, %B %-d, %Y")
     # YYYY-MM-DD for URL/Picker
     iso_date = target_date.strftime("%Y-%m-%d")
 
@@ -346,9 +346,10 @@ def _register_session(page, session: dict, target_date_str: str) -> dict:
         return {"status": "booked", "time": time_display, "date": target_date_str}
     
     if second_clicked or finalize_clicked:
-        return {"status": "booked", "time": time_display, "date": target_date_str}
-    
-    return {"status": "error", "message": "Buttons clicked but no success message found."}
+        return {"status": "uncertain", "time": time_display, "date": target_date_str,
+                "message": "Registration steps completed but no confirmation message detected. Please check CourtReserve to verify."}
+
+    return {"status": "error", "message": "No confirmation message found and no registration buttons were clicked."}
 
 
 if __name__ == "__main__":

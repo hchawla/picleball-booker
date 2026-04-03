@@ -258,15 +258,6 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
                     if not custom_filled:
                         return {"status": "error", "message": f"Could not fill custom date inputs for {picker_date}. Run --debug to inspect."}
 
-                    # Click the sidebar Filter button to trigger the AJAX reload
-                    page.wait_for_timeout(500)
-                    try:
-                        filter_btn = page.locator("button:has-text('Filter'), a:has-text('Filter'), input[value='Filter']").last
-                        if filter_btn.count() > 0:
-                            filter_btn.click()
-                    except Exception:
-                        pass
-
                     if not custom_filled:
                         return {"status": "error", "message": f"Could not fill custom date inputs for {picker_date}. Run --debug to inspect the page after clicking Custom."}
 
@@ -280,9 +271,14 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
                 debug_path = SKILL_DIR / f"debug_{iso_date}.png"
                 text_path  = SKILL_DIR / f"debug_{iso_date}.txt"
                 page.screenshot(path=str(debug_path), full_page=True)
-                text_path.write_text(page.inner_text("body"))
+                body_text = page.inner_text("body")
+                text_path.write_text(body_text)
                 sys.stderr.write(f"[debug] final screenshot: {debug_path}\n")
                 sys.stderr.write(f"[debug] days_diff: {days_diff}, date_check_patterns: {date_check_patterns}\n")
+                # Show first dates mentioned so we can confirm correct date loaded
+                import re as _re
+                dates_found = _re.findall(r"(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+", body_text)
+                sys.stderr.write(f"[debug] dates on page: {list(dict.fromkeys(dates_found))[:10]}\n")
 
             return _scan_and_book(page, display_date_str, date_check_patterns, dry_run=dry_run, target_h=target_h, target_m=target_m)
 

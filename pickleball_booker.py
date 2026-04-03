@@ -115,6 +115,8 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
     display_date_str = target_date.strftime("%A, %B %-d, %Y")
     # YYYY-MM-DD for URL/Picker
     iso_date = target_date.strftime("%Y-%m-%d")
+    # MM/DD/YYYY — the format CourtReserve datepicker inputs expect
+    picker_date = target_date.strftime("%m/%d/%Y")
 
     target_h, target_m = None, None
     if target_time:
@@ -145,28 +147,45 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
                 except Exception as e:
                     return {"status": "login_failed", "message": f"Login Error: {str(e)[:80]}"}
 
-            # Navigate directly to the date if possible, otherwise use the picker
-            # Most CourtReserve sites support a 'datepicker' query param
-            page.goto(f"{EVENTS_URL}?datepicker={iso_date}", wait_until="domcontentloaded")
+            # Navigate using MM/DD/YYYY — the format CourtReserve datepickers expect
+            page.goto(f"{EVENTS_URL}?datepicker={picker_date}", wait_until="domcontentloaded")
             page.wait_for_timeout(2000)
 
             if page.locator("input[placeholder='Enter Your Email']").count() > 0:
                 return {"status": "error", "message": "Bounced back to login screen."}
 
-            # Verification: Check if the datepicker shows the requested date
-            # If the URL param didn't work, we try to manually set the date input
+            # Verify the page is showing the right date; if not, set it via JS and Enter
+            date_nav_ok = False
             try:
                 date_input = page.locator("input#datepicker, input.datepicker").first
                 if date_input.count() > 0:
                     current_val = date_input.input_value()
-                    # If it's not our target date, try to fill it and trigger change
-                    if iso_date not in current_val:
-                        date_input.fill(iso_date)
+                    if picker_date in current_val:
+                        date_nav_ok = True
+                    else:
+                        # Fill with MM/DD/YYYY and dispatch change event
+                        page.evaluate(f'''() => {{
+                            let el = document.querySelector('input#datepicker, input.datepicker');
+                            if (el) {{
+                                el.value = "{picker_date}";
+                                el.dispatchEvent(new Event('change', {{bubbles: true}}));
+                                el.dispatchEvent(new Event('input', {{bubbles: true}}));
+                            }}
+                        }}''')
+                        page.wait_for_timeout(500)
                         date_input.press("Enter")
                         page.wait_for_load_state("networkidle")
                         page.wait_for_timeout(2000)
-            except Exception:
-                pass
+                        final_val = date_input.input_value()
+                        if picker_date in final_val:
+                            date_nav_ok = True
+                        else:
+                            return {"status": "error", "message": f"Date navigation failed: page shows '{final_val}', expected '{picker_date}'. Cannot book without confirming the correct date."}
+                else:
+                    # No datepicker input found — trust the URL param worked
+                    date_nav_ok = True
+            except Exception as e:
+                return {"status": "error", "message": f"Date navigation error: {str(e)[:100]}"}
 
             return _scan_and_book(page, display_date_str, dry_run=dry_run, target_h=target_h, target_m=target_m)
 

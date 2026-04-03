@@ -193,28 +193,77 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
                         snap = SKILL_DIR / f"debug_{iso_date}_after_custom_click.png"
                         page.screenshot(path=str(snap), full_page=True)
                         sys.stderr.write(f"[debug] after Custom click: {snap}\n")
+                        # Dump text/date inputs and Kendo widget inputs specifically
+                        inputs_info = page.evaluate('''() => {
+                            return Array.from(document.querySelectorAll("input")).filter(el => {
+                                if (el.offsetParent === null) return false;
+                                var cls = el.className || "";
+                                var role = el.getAttribute("data-role") || "";
+                                return el.type === "text" || el.type === "date"
+                                    || cls.includes("k-input")
+                                    || role.includes("date");
+                            }).map(el => ({
+                                type: el.type, id: el.id, name: el.name,
+                                placeholder: el.placeholder,
+                                cls: el.className.substring(0, 100),
+                                value: el.value,
+                                "data-role": el.getAttribute("data-role"),
+                                "aria-label": el.getAttribute("aria-label")
+                            }));
+                        }''')
+                        sys.stderr.write(f"[debug] text/date inputs: {json.dumps(inputs_info, indent=2)}\n")
 
-                    # Try multiple selector patterns for start/end date inputs
+                    # Try multiple selector patterns for start/end date inputs.
+                    # This site uses Kendo UI — inputs may have data-role="datepicker"
+                    # or class k-input-inner (visible text input inside Kendo widget).
                     custom_filled = False
-                    candidates = [
-                        ("input[id*='startDate' i], input[id*='start_date' i], input[name*='startDate' i]",
-                         "input[id*='endDate' i],   input[id*='end_date' i],   input[name*='endDate' i]"),
-                        ("input[placeholder*='Start' i], input[placeholder*='From' i]",
-                         "input[placeholder*='End' i],   input[placeholder*='To' i]"),
-                        ("input[type='date']:nth-of-type(1)", "input[type='date']:nth-of-type(2)"),
-                    ]
-                    for start_sel, end_sel in candidates:
-                        try:
-                            s = page.locator(start_sel).first
-                            e = page.locator(end_sel).first
-                            if s.count() > 0 and e.count() > 0:
-                                s.fill(picker_date)
-                                e.fill(picker_date)
-                                e.press("Enter")
-                                custom_filled = True
-                                break
-                        except Exception:
-                            pass
+
+                    # First attempt: Kendo JS API (most reliable for Kendo widgets)
+                    try:
+                        filled = page.evaluate(f'''() => {{
+                            var inputs = Array.from(document.querySelectorAll("input")).filter(el => {{
+                                if (el.offsetParent === null) return false;
+                                var cls = el.className || "";
+                                var role = el.getAttribute("data-role") || "";
+                                return el.type === "text" && (cls.includes("k-input") || role.includes("date") || el.id.toLowerCase().includes("date"));
+                            }});
+                            if (inputs.length >= 2) {{
+                                inputs[0].value = "{picker_date}";
+                                inputs[0].dispatchEvent(new Event("change", {{bubbles: true}}));
+                                inputs[0].dispatchEvent(new Event("input", {{bubbles: true}}));
+                                inputs[1].value = "{picker_date}";
+                                inputs[1].dispatchEvent(new Event("change", {{bubbles: true}}));
+                                inputs[1].dispatchEvent(new Event("input", {{bubbles: true}}));
+                                return inputs.length;
+                            }}
+                            return 0;
+                        }}''')
+                        if filled and filled >= 2:
+                            custom_filled = True
+                    except Exception:
+                        pass
+
+                    # Fallback: CSS selector pairs
+                    if not custom_filled:
+                        candidates = [
+                            ("input[data-role*='date' i]", "input[data-role*='date' i]"),
+                            ("input[id*='startDate' i], input[id*='start_date' i], input[name*='startDate' i]",
+                             "input[id*='endDate' i],   input[id*='end_date' i],   input[name*='endDate' i]"),
+                            ("input[placeholder*='Start' i], input[placeholder*='From' i]",
+                             "input[placeholder*='End' i],   input[placeholder*='To' i]"),
+                        ]
+                        for start_sel, end_sel in candidates:
+                            try:
+                                s = page.locator(start_sel).first
+                                e = page.locator(end_sel).last
+                                if s.count() > 0 and e.count() > 0:
+                                    s.fill(picker_date)
+                                    e.fill(picker_date)
+                                    e.press("Enter")
+                                    custom_filled = True
+                                    break
+                            except Exception:
+                                pass
 
                     if not custom_filled:
                         return {"status": "error", "message": f"Could not fill custom date inputs for {picker_date}. Run --debug to inspect the page after clicking Custom."}

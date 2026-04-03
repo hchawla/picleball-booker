@@ -28,7 +28,7 @@ python3 pickleball_booker.py --date "2026-04-06" --dry-run
 ## Response Status Codes
 - `booked` — Confirmed success. CourtReserve showed a booking confirmation page.
 - `uncertain` — Registration steps were completed (buttons clicked) but no confirmation message appeared. Tell the user to manually verify in CourtReserve. Do NOT report this as a successful booking.
-- `dry_run` — Availability found; no booking attempted.
+- `dry_run` — Availability found; no booking attempted. `sessions` is a list of all available slots (e.g. `[{"time": "7a–9a"}, {"time": "9a–12p"}]`). Show all of them to the user so they can choose which to book.
 - `already_booked` — Already registered for this session.
 - `none_available` — No free AM Open Play sessions match the criteria.
 - `error` — Script failed; check the `message` field.

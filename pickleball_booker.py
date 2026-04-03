@@ -309,7 +309,11 @@ def _scan_and_book(page, target_date_str: str, card_date_str: str, dry_run: bool
     target = qualifying_sessions[0]
 
     if dry_run:
-        return {"status": "dry_run", "would_book": target["time_str"], "date": target_date_str}
+        return {
+            "status": "dry_run",
+            "sessions": [{"time": s["time_str"]} for s in qualifying_sessions],
+            "date": target_date_str,
+        }
 
     return _register_session(page, target, target_date_str)
 

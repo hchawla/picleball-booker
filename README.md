@@ -21,6 +21,20 @@ A standalone OpenClaw skill to automate court reservations at Pickleball Haven L
     ```
     *Alternatively, use macOS Keychain with the service name `openclaw-pickleball-booker`.*
 
+## ⚠️ Membership Limitations (AM Membership)
+
+This booker is hardcoded for the **AM Open Play membership** at Pickleball Haven Lake Forest. It will only attempt to book sessions that match all of the following:
+
+| Constraint | Value | Why |
+|---|---|---|
+| Session type | **Open Play only** | AM membership doesn't cover reserved courts |
+| Cost | **Free only** | AM membership has no drop-in fee — paid sessions are skipped |
+| Start time | **Before 2:30 PM** | AM membership cutoff; sessions at or after 2:30 PM are excluded |
+| Booking window | **Up to 7 days out** | CourtReserve site limit for this club |
+| Target-time tolerance | **±45 minutes** | When `--target-time` is set, only books sessions within 45 min of the requested time |
+
+If you have a different membership tier (e.g., Full or PM), these filters will cause the script to report no available sessions even when courts exist. You'd need to adjust `MAX_START_H`, `MAX_START_M`, and the `is_free` check in `pickleball_booker.py`.
+
 ## 🛠️ Usage
 
 ### From the CLI

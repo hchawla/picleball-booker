@@ -380,14 +380,21 @@ def _register_session(page, session: dict, target_date_str: str) -> dict:
     except Exception as e:
         return {"status": "error", "message": f"JS Execution failed: {str(e)[:50]}"}
 
-    page.wait_for_timeout(4000) 
-    
+    page.wait_for_timeout(4000)
+
     page_text = page.inner_text("body").upper()
-    success_keywords = ["SUCCESS", "CONFIRMED", "MY BOOKINGS", "REGISTERED", "COMPLETE", "THANK YOU", "SPOT IS SAVED"]
-    
-    if any(word in page_text for word in success_keywords):
+
+    # Primary: explicit confirmation copy
+    success_keywords = ["SUCCESS", "CONFIRMED", "MY BOOKINGS", "REGISTERED",
+                        "THANK YOU", "SPOT IS SAVED", "YOU ARE IN", "YOU'RE IN"]
+    # Secondary: after a successful booking CourtReserve redirects back to the events
+    # list where your session now shows "Edit Registration" or "Withdraw" — both mean
+    # you are registered. "COMPLETE" alone is too generic so it's moved here.
+    post_redirect_keywords = ["EDIT REGISTRATION", "WITHDRAW", "COMPLETE"]
+
+    if any(word in page_text for word in success_keywords + post_redirect_keywords):
         return {"status": "booked", "time": time_display, "date": target_date_str}
-    
+
     if second_clicked or finalize_clicked:
         return {"status": "uncertain", "time": time_display, "date": target_date_str,
                 "message": "Registration steps completed but no confirmation message detected. Please check CourtReserve to verify."}

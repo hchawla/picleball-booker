@@ -213,57 +213,59 @@ def book_pickleball_session(dry_run: bool = False, target_time: str = None, targ
                         }''')
                         sys.stderr.write(f"[debug] text/date inputs: {json.dumps(inputs_info, indent=2)}\n")
 
-                    # Try multiple selector patterns for start/end date inputs.
-                    # This site uses Kendo UI — inputs may have data-role="datepicker"
-                    # or class k-input-inner (visible text input inside Kendo widget).
+                    # Fill the Kendo DatePicker custom date range.
+                    # Confirmed IDs for this site: CustomDate_Start / CustomDate_End.
+                    # Must use the Kendo jQuery API — plain DOM events don't trigger
+                    # Kendo's internal state update or the AJAX filter reload.
                     custom_filled = False
-
-                    # First attempt: Kendo JS API (most reliable for Kendo widgets)
                     try:
-                        filled = page.evaluate(f'''() => {{
-                            var inputs = Array.from(document.querySelectorAll("input")).filter(el => {{
-                                if (el.offsetParent === null) return false;
-                                var cls = el.className || "";
-                                var role = el.getAttribute("data-role") || "";
-                                return el.type === "text" && (cls.includes("k-input") || role.includes("date") || el.id.toLowerCase().includes("date"));
-                            }});
-                            if (inputs.length >= 2) {{
-                                inputs[0].value = "{picker_date}";
-                                inputs[0].dispatchEvent(new Event("change", {{bubbles: true}}));
-                                inputs[0].dispatchEvent(new Event("input", {{bubbles: true}}));
-                                inputs[1].value = "{picker_date}";
-                                inputs[1].dispatchEvent(new Event("change", {{bubbles: true}}));
-                                inputs[1].dispatchEvent(new Event("input", {{bubbles: true}}));
-                                return inputs.length;
-                            }}
-                            return 0;
+                        kendo_result = page.evaluate(f'''() => {{
+                            if (!window.$) return "no-jquery";
+                            var sp = $("#CustomDate_Start").data("kendoDatePicker");
+                            var ep = $("#CustomDate_End").data("kendoDatePicker");
+                            if (!sp || !ep) return "no-widget";
+                            sp.value("{picker_date}");
+                            sp.trigger("change");
+                            ep.value("{picker_date}");
+                            ep.trigger("change");
+                            return "ok";
                         }}''')
-                        if filled and filled >= 2:
+                        if kendo_result == "ok":
                             custom_filled = True
+                        elif debug:
+                            sys.stderr.write(f"[debug] kendo fill result: {kendo_result}\n")
+                    except Exception as ex:
+                        if debug:
+                            sys.stderr.write(f"[debug] kendo fill exception: {ex}\n")
+
+                    # If Kendo API unavailable, fall back to Playwright .fill() + Tab
+                    if not custom_filled:
+                        try:
+                            s = page.locator("#CustomDate_Start")
+                            e = page.locator("#CustomDate_End")
+                            if s.count() > 0 and e.count() > 0:
+                                s.triple_click()
+                                s.type(picker_date)
+                                s.press("Tab")
+                                page.wait_for_timeout(300)
+                                e.triple_click()
+                                e.type(picker_date)
+                                e.press("Tab")
+                                custom_filled = True
+                        except Exception:
+                            pass
+
+                    if not custom_filled:
+                        return {"status": "error", "message": f"Could not fill custom date inputs for {picker_date}. Run --debug to inspect."}
+
+                    # Click the sidebar Filter button to trigger the AJAX reload
+                    page.wait_for_timeout(500)
+                    try:
+                        filter_btn = page.locator("button:has-text('Filter'), a:has-text('Filter'), input[value='Filter']").last
+                        if filter_btn.count() > 0:
+                            filter_btn.click()
                     except Exception:
                         pass
-
-                    # Fallback: CSS selector pairs
-                    if not custom_filled:
-                        candidates = [
-                            ("input[data-role*='date' i]", "input[data-role*='date' i]"),
-                            ("input[id*='startDate' i], input[id*='start_date' i], input[name*='startDate' i]",
-                             "input[id*='endDate' i],   input[id*='end_date' i],   input[name*='endDate' i]"),
-                            ("input[placeholder*='Start' i], input[placeholder*='From' i]",
-                             "input[placeholder*='End' i],   input[placeholder*='To' i]"),
-                        ]
-                        for start_sel, end_sel in candidates:
-                            try:
-                                s = page.locator(start_sel).first
-                                e = page.locator(end_sel).last
-                                if s.count() > 0 and e.count() > 0:
-                                    s.fill(picker_date)
-                                    e.fill(picker_date)
-                                    e.press("Enter")
-                                    custom_filled = True
-                                    break
-                            except Exception:
-                                pass
 
                     if not custom_filled:
                         return {"status": "error", "message": f"Could not fill custom date inputs for {picker_date}. Run --debug to inspect the page after clicking Custom."}
